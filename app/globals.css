@@ -1,0 +1,369 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "../vendor/shadcn-tailwind-4.13.0.css";
+
+:root {
+  --background: #0c0e0f;
+  --foreground: #f1eee8;
+  --card: #111416;
+  --card-foreground: #f1eee8;
+  --popover: #111416;
+  --popover-foreground: #f1eee8;
+  --primary: #d9c7a3;
+  --primary-foreground: #121416;
+  --secondary: #24282a;
+  --secondary-foreground: #f1eee8;
+  --muted: #1b1f21;
+  --muted-foreground: #9ca4a4;
+  --accent: #bd9f6b;
+  --accent-foreground: #101214;
+  --destructive: #ef6262;
+  --border: #ffffff24;
+  --input: #ffffff1f;
+  --ring: #d9c7a3;
+  --radius: 0.2rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --font-sans: Arial, Helvetica, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0c0e0f;
+  color: #f1eee8;
+}
+
+body { margin: 0; font-family: Arial, Helvetica, sans-serif; }
+button, a { -webkit-tap-highlight-color: transparent; }
+
+.experience-shell {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #a8bdcc;
+}
+
+.world-canvas { display: block; width: 100%; height: 100%; outline: none; }
+
+.hud-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  color: #f6f1e7;
+  text-shadow: 0 1px 12px #000a;
+}
+
+.brand-lockup {
+  position: absolute;
+  top: 28px;
+  left: 30px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font: 600 11px/1.2 var(--font-mono);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.brand-mark {
+  width: 8px;
+  height: 29px;
+  border: 1px solid #eadfc8;
+  border-top-width: 5px;
+}
+
+.location-card {
+  position: absolute;
+  left: 30px;
+  bottom: 30px;
+  min-width: 210px;
+  padding: 13px 16px;
+  border-left: 2px solid #d4bd8f;
+  background: linear-gradient(90deg, #080a0bc7, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.location-eyebrow {
+  margin-bottom: 5px;
+  color: #cdb98f;
+  font: 600 10px/1.2 var(--font-mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.location-title { font: 600 14px/1.35 var(--font-mono); letter-spacing: 0.08em; }
+
+.crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translate(-50%, -50%);
+  opacity: 0.78;
+}
+
+.crosshair::before,
+.crosshair::after { content: ""; position: absolute; background: #f8f0df; }
+.crosshair::before { top: 6px; left: 0; width: 14px; height: 1px; }
+.crosshair::after { top: 0; left: 6px; width: 1px; height: 14px; }
+
+.interaction-prompt {
+  position: absolute;
+  left: 50%;
+  bottom: 72px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 13px;
+  transform: translateX(-50%);
+  border: 1px solid #e2d3b45c;
+  background: #080a0bce;
+  backdrop-filter: blur(9px);
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.keycap {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border: 1px solid #d7c498;
+  color: #ead9b5;
+  font-weight: 700;
+}
+
+.intro-overlay,
+.pause-overlay,
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+}
+
+.intro-overlay {
+  background:
+    linear-gradient(90deg, #080a0bf2 0%, #080a0bc4 45%, #080a0b47 100%),
+    url("/references/twin-towers/master-view.png") center/cover no-repeat;
+}
+
+.intro-panel {
+  width: min(720px, calc(100vw - 40px));
+  margin-right: min(28vw, 360px);
+  padding: 42px 0 42px 42px;
+  border-left: 1px solid #d6c19580;
+}
+
+.intro-index {
+  color: #c8b184;
+  font: 600 10px/1 var(--font-mono);
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+}
+
+.intro-title {
+  max-width: 660px;
+  margin: 22px 0 16px;
+  font-size: clamp(48px, 7vw, 98px);
+  font-weight: 500;
+  line-height: 0.88;
+  letter-spacing: -0.06em;
+  text-transform: uppercase;
+}
+
+.intro-copy {
+  max-width: 480px;
+  margin: 0 0 28px;
+  color: #d2d0ca;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  margin-bottom: 30px;
+  color: #aaa99f;
+  font: 500 10px/1.4 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.controls-row strong { color: #eee2ca; }
+
+.enter-button {
+  min-width: 210px;
+  height: 48px;
+  border-radius: 0 !important;
+  font: 700 11px/1 var(--font-mono) !important;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.pause-overlay { background: #080a0b9c; backdrop-filter: blur(5px); }
+
+.pause-card {
+  width: min(430px, calc(100vw - 40px));
+  padding: 32px;
+  border: 1px solid #d5c39b52;
+  background: #111416e8;
+  text-align: center;
+}
+
+.pause-card h2 {
+  margin: 0 0 10px;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pause-card p { margin: 0 0 22px; color: #aeb2af; font-size: 13px; }
+
+.loading-overlay {
+  background: #0b0e10;
+  color: #cdb98f;
+  font: 600 11px/1 var(--font-mono);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.nft-sheet {
+  width: min(460px, 94vw) !important;
+  max-width: none !important;
+  gap: 0 !important;
+  overflow-y: auto;
+  border-left: 1px solid #d5c2944a !important;
+  background: #0c0f10f5 !important;
+  color: #f1eee8 !important;
+  backdrop-filter: blur(18px);
+}
+
+.nft-sheet-header { padding: 28px 28px 18px !important; border-bottom: 1px solid #ffffff16; }
+
+.nft-sheet-kicker {
+  margin-bottom: 12px;
+  color: #c6ad7a;
+  font: 600 10px/1 var(--font-mono);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.nft-sheet-title { font-size: 30px !important; font-weight: 500 !important; letter-spacing: -0.02em; }
+.nft-sheet-description { color: #939a98 !important; }
+
+.nft-art-placeholder {
+  position: relative;
+  aspect-ratio: 4 / 5;
+  margin: 24px 28px;
+  overflow: hidden;
+  border: 1px solid #d7c39435;
+  background: linear-gradient(135deg, #24282a 0%, #111415 47%, #2a2b28 100%);
+}
+
+.nft-art-placeholder::before {
+  content: "";
+  position: absolute;
+  inset: 12%;
+  border: 1px solid #d4bc8b2e;
+  background: radial-gradient(circle at 35% 25%, #bda37116, transparent 45%);
+}
+
+.nft-art-number {
+  position: absolute;
+  right: 18px;
+  bottom: 16px;
+  color: #d4c29b;
+  font: 600 12px/1 var(--font-mono);
+  letter-spacing: 0.16em;
+}
+
+.nft-art-status {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  width: 100%;
+  transform: translate(-50%, -50%);
+  color: #ead9b4;
+  font: 650 clamp(20px, 3vw, 32px)/1.1 var(--font-sans);
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+
+.nft-details { display: grid; margin: 0 28px 28px; border-top: 1px solid #ffffff18; }
+
+.detail-row {
+  display: grid;
+  grid-template-columns: 42% 58%;
+  gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid #ffffff12;
+  font: 500 11px/1.4 var(--font-mono);
+}
+
+.detail-row dt { color: #7f8785; letter-spacing: 0.08em; text-transform: uppercase; }
+.detail-row dd { margin: 0; color: #dfd9cb; text-align: right; }
+.mobile-notice { display: none; }
+
+@media (max-width: 720px) {
+  .brand-lockup, .location-card { left: 18px; }
+  .brand-lockup { top: 18px; }
+  .location-card { bottom: 18px; }
+  .intro-panel { margin: 0; padding: 30px 22px; border-left: 0; }
+  .intro-title { font-size: 50px; }
+  .intro-overlay {
+    background:
+      linear-gradient(#080a0bd7, #080a0bf3),
+      url("/references/twin-towers/master-view.png") center/cover no-repeat;
+  }
+  .mobile-notice {
+    display: block;
+    margin-top: 18px;
+    color: #c7b58f;
+    font: 500 10px/1.5 var(--font-mono);
+    text-transform: uppercase;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
