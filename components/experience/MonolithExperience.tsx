@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -44,8 +45,7 @@ type WorldHandles = {
 };
 
 type OwnerCharacterHandle = {
-  wavingArm: THREE.Group;
-  restingArmRotation: number;
+  armAngle: { value: number };
   phase: number;
 };
 
@@ -102,26 +102,97 @@ function addRailBetween(
   return rail;
 }
 
-function addCharacterMesh(
-  parent: THREE.Object3D,
-  geometry: THREE.BufferGeometry,
+function addOwnerArmWeight(geometry: THREE.BufferGeometry) {
+  const position = geometry.getAttribute("position");
+  const weights = new Float32Array(position.count);
+
+  for (let index = 0; index < position.count; index += 1) {
+    const x = position.getX(index);
+    const y = position.getY(index);
+    const sideWeight = THREE.MathUtils.smoothstep(x, 0.11, 0.27);
+    const shoulderWeight = 1 - THREE.MathUtils.smoothstep(y, 0.1, 0.28);
+    weights[index] = sideWeight * shoulderWeight;
+  }
+
+  geometry.setAttribute("ownerArmWeight", new THREE.BufferAttribute(weights, 1));
+}
+
+function applyOwnerArmWave(
   material: THREE.Material,
-  position: [number, number, number],
-  scale: [number, number, number] = [1, 1, 1],
-  rotation: [number, number, number] = [0, 0, 0],
+  armAngle: { value: number },
+  rotateNormals: boolean,
 ) {
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.position.set(...position);
-  mesh.scale.set(...scale);
-  mesh.rotation.set(...rotation);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  parent.add(mesh);
-  return mesh;
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uOwnerArmAngle = armAngle;
+    shader.vertexShader = shader.vertexShader.replace(
+      "#include <common>",
+      `#include <common>
+attribute float ownerArmWeight;
+uniform float uOwnerArmAngle;
+
+mat2 ownerArmRotation(float angle) {
+  float sine = sin(angle);
+  float cosine = cos(angle);
+  return mat2(cosine, sine, -sine, cosine);
+}`,
+    );
+
+    if (rotateNormals) {
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <beginnormal_vertex>",
+        `#include <beginnormal_vertex>
+objectNormal.xy = ownerArmRotation(uOwnerArmAngle * ownerArmWeight) * objectNormal.xy;`,
+      );
+    }
+
+    shader.vertexShader = shader.vertexShader.replace(
+      "#include <begin_vertex>",
+      `#include <begin_vertex>
+vec2 ownerArmPivot = vec2(0.18, 0.16);
+transformed.xy =
+  ownerArmRotation(uOwnerArmAngle * ownerArmWeight) *
+  (transformed.xy - ownerArmPivot) +
+  ownerArmPivot;`,
+    );
+  };
+  material.customProgramCacheKey = () =>
+    `owner-character-wave-${rotateNormals ? "lit" : "depth"}-v1`;
+}
+
+async function loadOwnerCharacterTemplate(renderer: THREE.WebGLRenderer) {
+  const [texture, model] = await Promise.all([
+    new THREE.TextureLoader().loadAsync(
+      "/models/owner-character/owner-character-texture.png",
+    ),
+    new OBJLoader().loadAsync("/models/owner-character/owner-character.obj"),
+  ]);
+
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+
+  model.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return;
+    if (!object.geometry.getAttribute("normal")) object.geometry.computeVertexNormals();
+    addOwnerArmWeight(object.geometry);
+  });
+
+  const bounds = new THREE.Box3().setFromObject(model);
+  const size = bounds.getSize(new THREE.Vector3());
+  const modelScale = 3.18 / size.y;
+  model.scale.setScalar(modelScale);
+  model.position.set(
+    -((bounds.min.x + bounds.max.x) / 2) * modelScale,
+    -bounds.min.y * modelScale,
+    -((bounds.min.z + bounds.max.z) / 2) * modelScale,
+  );
+
+  return { model, texture };
 }
 
 function createOwnerCharacter(
   scene: THREE.Scene,
+  template: THREE.Group,
+  texture: THREE.Texture,
   position: THREE.Vector3,
   rotationY: number,
   phase: number,
@@ -129,233 +200,32 @@ function createOwnerCharacter(
   const character = new THREE.Group();
   character.position.copy(position);
   character.rotation.y = rotationY;
-  character.scale.setScalar(0.92);
 
-  const hoodieMaterial = new THREE.MeshStandardMaterial({
-    color: 0x30255f,
-    roughness: 0.83,
-    metalness: 0.02,
-  });
-  const hoodieHighlightMaterial = new THREE.MeshStandardMaterial({
-    color: 0x4a3a86,
-    roughness: 0.8,
-    metalness: 0.02,
-  });
-  const skinMaterial = new THREE.MeshStandardMaterial({
-    color: 0xf3c8ad,
-    roughness: 0.8,
-    metalness: 0,
-  });
-  const hairMaterial = new THREE.MeshStandardMaterial({
-    color: 0x713b3e,
-    roughness: 0.72,
-    metalness: 0.01,
-  });
-  const pantsMaterial = new THREE.MeshStandardMaterial({
-    color: 0x24262c,
-    roughness: 0.91,
-    metalness: 0,
-  });
-  const shoePurpleMaterial = new THREE.MeshStandardMaterial({
-    color: 0x58428c,
-    roughness: 0.68,
-    metalness: 0.03,
-  });
-  const shoeWhiteMaterial = new THREE.MeshStandardMaterial({
-    color: 0xe8e3dc,
-    roughness: 0.74,
-    metalness: 0,
-  });
-  const facialMaterial = new THREE.MeshStandardMaterial({
-    color: 0x33201f,
-    roughness: 0.76,
-    metalness: 0,
-  });
-  const blushMaterial = new THREE.MeshStandardMaterial({
-    color: 0xe78f91,
-    roughness: 0.8,
-    metalness: 0,
+  const armAngle = { value: 2.36 };
+  const model = template.clone(true);
+  model.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return;
+
+    const material = new THREE.MeshStandardMaterial({
+      map: texture,
+      roughness: 0.78,
+      metalness: 0.01,
+    });
+    applyOwnerArmWave(material, armAngle, true);
+    object.material = material;
+    object.castShadow = true;
+    object.receiveShadow = true;
+
+    const depthMaterial = new THREE.MeshDepthMaterial({
+      depthPacking: THREE.RGBADepthPacking,
+    });
+    applyOwnerArmWave(depthMaterial, armAngle, false);
+    object.customDepthMaterial = depthMaterial;
   });
 
-  // Shoes and legs keep the approved compact, full-body chibi silhouette.
-  for (const side of [-1, 1]) {
-    addCharacterMesh(
-      character,
-      new THREE.CapsuleGeometry(0.18, 0.34, 5, 10),
-      shoeWhiteMaterial,
-      [side * 0.27, 0.18, 0.12],
-      [1.05, 1, 1.15],
-      [Math.PI / 2, 0, 0],
-    );
-    addCharacterMesh(
-      character,
-      new THREE.BoxGeometry(0.38, 0.12, 0.42),
-      shoePurpleMaterial,
-      [side * 0.27, 0.15, 0.26],
-    );
-    addCharacterMesh(
-      character,
-      new THREE.CapsuleGeometry(0.24, 0.58, 6, 12),
-      pantsMaterial,
-      [side * 0.27, 0.72, 0],
-      [1.04, 1, 1.02],
-    );
-  }
-
-  addCharacterMesh(
-    character,
-    new THREE.SphereGeometry(0.72, 26, 18),
-    hoodieMaterial,
-    [0, 1.58, 0],
-    [1, 1.02, 0.72],
-  );
-  addCharacterMesh(
-    character,
-    new THREE.TorusGeometry(0.57, 0.065, 8, 30),
-    hoodieHighlightMaterial,
-    [0, 1.09, 0],
-    [1, 0.76, 1],
-    [Math.PI / 2, 0, 0],
-  );
-  addCharacterMesh(
-    character,
-    new THREE.BoxGeometry(0.58, 0.27, 0.06),
-    hoodieHighlightMaterial,
-    [0, 1.43, 0.54],
-  );
-  for (const side of [-1, 1]) {
-    addCharacterMesh(
-      character,
-      new THREE.CylinderGeometry(0.018, 0.018, 0.34, 8),
-      hoodieHighlightMaterial,
-      [side * 0.14, 1.76, 0.58],
-    );
-  }
-
-  // Hood, face, hair and closed-eye expression mirror the approved concept.
-  addCharacterMesh(
-    character,
-    new THREE.SphereGeometry(0.79, 30, 22),
-    hoodieMaterial,
-    [0, 2.56, 0],
-    [1, 1.03, 0.82],
-  );
-  addCharacterMesh(
-    character,
-    new THREE.SphereGeometry(0.61, 30, 22),
-    skinMaterial,
-    [0, 2.53, 0.48],
-    [1, 0.9, 0.78],
-  );
-  addCharacterMesh(
-    character,
-    new THREE.TorusGeometry(0.63, 0.12, 10, 40),
-    hoodieHighlightMaterial,
-    [0, 2.57, 0.72],
-    [1, 1.03, 1],
-  );
-  addCharacterMesh(
-    character,
-    new THREE.SphereGeometry(0.62, 28, 18),
-    hairMaterial,
-    [0, 2.87, 0.63],
-    [1, 0.5, 0.78],
-  );
-  [
-    { x: -0.3, y: 2.76, rz: -0.28, sx: 1.15 },
-    { x: 0, y: 2.8, rz: -0.08, sx: 1.2 },
-    { x: 0.3, y: 2.78, rz: 0.22, sx: 1.05 },
-  ].forEach(({ x, y, rz, sx }) => {
-    addCharacterMesh(
-      character,
-      new THREE.SphereGeometry(0.22, 18, 12),
-      hairMaterial,
-      [x, y, 1.02],
-      [sx, 0.42, 0.35],
-      [0, 0, rz],
-    );
-  });
-
-  for (const side of [-1, 1]) {
-    addCharacterMesh(
-      character,
-      new THREE.BoxGeometry(0.22, 0.026, 0.025),
-      facialMaterial,
-      [side * 0.23, 2.5, 0.97],
-      [1, 1, 1],
-      [0, 0, side * 0.06],
-    );
-    addCharacterMesh(
-      character,
-      new THREE.SphereGeometry(0.035, 10, 8),
-      blushMaterial,
-      [side * 0.32, 2.38, 0.96],
-      [1.8, 0.55, 0.35],
-    );
-  }
-  addCharacterMesh(
-    character,
-    new THREE.SphereGeometry(0.026, 10, 8),
-    facialMaterial,
-    [0, 2.31, 0.97],
-    [1.3, 0.55, 0.45],
-  );
-
-  const restingArm = new THREE.Group();
-  restingArm.position.set(-0.61, 1.88, 0.04);
-  restingArm.rotation.z = 0.08;
-  addCharacterMesh(
-    restingArm,
-    new THREE.CapsuleGeometry(0.19, 0.48, 6, 12),
-    hoodieMaterial,
-    [0, -0.38, 0],
-  );
-  addCharacterMesh(
-    restingArm,
-    new THREE.SphereGeometry(0.16, 16, 12),
-    skinMaterial,
-    [0, -0.79, 0.01],
-  );
-  character.add(restingArm);
-
-  const wavingArm = new THREE.Group();
-  const restingArmRotation = -0.37;
-  wavingArm.position.set(0.61, 1.9, 0.04);
-  wavingArm.rotation.z = restingArmRotation;
-  addCharacterMesh(
-    wavingArm,
-    new THREE.CapsuleGeometry(0.2, 0.42, 6, 12),
-    hoodieMaterial,
-    [0, 0.32, 0],
-  );
-  addCharacterMesh(
-    wavingArm,
-    new THREE.SphereGeometry(0.17, 16, 12),
-    skinMaterial,
-    [0, 0.72, 0.01],
-  );
-  for (const finger of [-1, 1]) {
-    addCharacterMesh(
-      wavingArm,
-      new THREE.CapsuleGeometry(0.052, 0.2, 5, 10),
-      skinMaterial,
-      [finger * 0.075, 0.98, 0.01],
-      [1, 1, 1],
-      [0, 0, finger * 0.14],
-    );
-  }
-  addCharacterMesh(
-    wavingArm,
-    new THREE.CapsuleGeometry(0.045, 0.11, 5, 9),
-    skinMaterial,
-    [-0.13, 0.76, 0.04],
-    [1, 1, 1],
-    [0, 0, Math.PI / 2.7],
-  );
-  character.add(wavingArm);
-
+  character.add(model);
   scene.add(character);
-  return { wavingArm, restingArmRotation, phase };
+  return { armAngle, phase };
 }
 
 function createClouds(scene: THREE.Scene) {
@@ -955,14 +825,7 @@ function createWorld(scene: THREE.Scene): WorldHandles {
   });
   createSkybridge(scene, concrete, darkMetal);
 
-  const ownerCharacters = OWNER_CHARACTER_PLACEMENTS.map(
-    ({ x, z, rotationY, phase }) => createOwnerCharacter(
-      scene,
-      new THREE.Vector3(x, BRIDGE_Y + 0.42, z),
-      rotationY,
-      phase,
-    ),
-  );
+  const ownerCharacters: OwnerCharacterHandle[] = [];
 
   const frames = new THREE.InstancedMesh(
     new THREE.BoxGeometry(1.42, 1.92, 0.13),
@@ -1166,6 +1029,34 @@ export function MonolithExperience() {
     scene.add(sun);
 
     const world = createWorld(scene);
+    let hasBeenDisposed = false;
+
+    void loadOwnerCharacterTemplate(renderer)
+      .then(({ model, texture }) => {
+        if (hasBeenDisposed) {
+          texture.dispose();
+          return;
+        }
+
+        world.ownerCharacters.push(
+          ...OWNER_CHARACTER_PLACEMENTS.map(({ x, z, rotationY, phase }) =>
+            createOwnerCharacter(
+              scene,
+              model,
+              texture,
+              new THREE.Vector3(x, BRIDGE_Y + 0.42, z),
+              rotationY,
+              phase,
+            ),
+          ),
+        );
+        setIsReady(true);
+      })
+      .catch((error: unknown) => {
+        console.error("Unable to load the gallery owner character.", error);
+        if (!hasBeenDisposed) setIsReady(true);
+      });
+
     const raycaster = new THREE.Raycaster();
     raycaster.far = 3.2;
     const center = new THREE.Vector2(0, 0);
@@ -1244,13 +1135,10 @@ export function MonolithExperience() {
       previousTime = time;
       const isLocked = document.pointerLockElement === renderer.domElement;
 
-      world.ownerCharacters.forEach(
-        ({ wavingArm, restingArmRotation, phase }) => {
-          const wave = Math.sin(time * 0.00135 + phase);
-          wavingArm.rotation.z = restingArmRotation + wave * 0.22;
-          wavingArm.rotation.x = Math.sin(time * 0.0009 + phase) * 0.035;
-        },
-      );
+      world.ownerCharacters.forEach(({ armAngle, phase }) => {
+        const wave = Math.sin(time * 0.00135 + phase);
+        armAngle.value = 2.36 + wave * 0.2;
+      });
 
       if (isLocked && selectedRef.current === null) {
         // Movement follows the camera's local axes: W/S use forward/backward,
@@ -1318,10 +1206,10 @@ export function MonolithExperience() {
       animationFrame = requestAnimationFrame(animate);
     };
 
-    setIsReady(true);
     animationFrame = requestAnimationFrame(animate);
 
     return () => {
+      hasBeenDisposed = true;
       cancelAnimationFrame(animationFrame);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("blur", clearKeys);
@@ -1343,6 +1231,7 @@ export function MonolithExperience() {
           }
           material.dispose();
         });
+        object.customDepthMaterial?.dispose();
       });
       renderer.dispose();
       renderer.domElement.remove();
