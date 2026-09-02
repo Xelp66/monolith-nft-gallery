@@ -22,8 +22,8 @@ const EYE_HEIGHT = 1.7;
 const FRAME_COUNT = 1000;
 const STAIR_X_OFFSETS = [-8, 8, -8, 8] as const;
 const OWNER_CHARACTER_PLACEMENTS = [
-  { x: -11.15, z: 4.25, rotationY: Math.PI / 2, phase: 0 },
-  { x: 11.15, z: -4.25, rotationY: -Math.PI / 2, phase: Math.PI * 0.62 },
+  { x: -11.15, z: 4.25, rotationY: Math.PI / 2 },
+  { x: 11.15, z: -4.25, rotationY: -Math.PI / 2 },
 ] as const;
 
 type FrameRecord = {
@@ -41,12 +41,6 @@ type LocationState = {
 type WorldHandles = {
   frames: THREE.InstancedMesh;
   highlight: THREE.Mesh;
-  ownerCharacters: OwnerCharacterHandle[];
-};
-
-type OwnerCharacterHandle = {
-  armAngle: { value: number };
-  phase: number;
 };
 
 type GallerySlot = {
@@ -102,63 +96,6 @@ function addRailBetween(
   return rail;
 }
 
-function addOwnerArmWeight(geometry: THREE.BufferGeometry) {
-  const position = geometry.getAttribute("position");
-  const weights = new Float32Array(position.count);
-
-  for (let index = 0; index < position.count; index += 1) {
-    const x = position.getX(index);
-    const y = position.getY(index);
-    const sideWeight = THREE.MathUtils.smoothstep(x, 0.11, 0.27);
-    const shoulderWeight = 1 - THREE.MathUtils.smoothstep(y, 0.1, 0.28);
-    weights[index] = sideWeight * shoulderWeight;
-  }
-
-  geometry.setAttribute("ownerArmWeight", new THREE.BufferAttribute(weights, 1));
-}
-
-function applyOwnerArmWave(
-  material: THREE.Material,
-  armAngle: { value: number },
-  rotateNormals: boolean,
-) {
-  material.onBeforeCompile = (shader) => {
-    shader.uniforms.uOwnerArmAngle = armAngle;
-    shader.vertexShader = shader.vertexShader.replace(
-      "#include <common>",
-      `#include <common>
-attribute float ownerArmWeight;
-uniform float uOwnerArmAngle;
-
-mat2 ownerArmRotation(float angle) {
-  float sine = sin(angle);
-  float cosine = cos(angle);
-  return mat2(cosine, sine, -sine, cosine);
-}`,
-    );
-
-    if (rotateNormals) {
-      shader.vertexShader = shader.vertexShader.replace(
-        "#include <beginnormal_vertex>",
-        `#include <beginnormal_vertex>
-objectNormal.xy = ownerArmRotation(uOwnerArmAngle * ownerArmWeight) * objectNormal.xy;`,
-      );
-    }
-
-    shader.vertexShader = shader.vertexShader.replace(
-      "#include <begin_vertex>",
-      `#include <begin_vertex>
-vec2 ownerArmPivot = vec2(0.18, 0.16);
-transformed.xy =
-  ownerArmRotation(uOwnerArmAngle * ownerArmWeight) *
-  (transformed.xy - ownerArmPivot) +
-  ownerArmPivot;`,
-    );
-  };
-  material.customProgramCacheKey = () =>
-    `owner-character-wave-${rotateNormals ? "lit" : "depth"}-v1`;
-}
-
 async function loadOwnerCharacterTemplate(renderer: THREE.WebGLRenderer) {
   const [texture, model] = await Promise.all([
     new THREE.TextureLoader().loadAsync(
@@ -173,7 +110,6 @@ async function loadOwnerCharacterTemplate(renderer: THREE.WebGLRenderer) {
   model.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
     if (!object.geometry.getAttribute("normal")) object.geometry.computeVertexNormals();
-    addOwnerArmWeight(object.geometry);
   });
 
   const bounds = new THREE.Box3().setFromObject(model);
@@ -195,13 +131,11 @@ function createOwnerCharacter(
   texture: THREE.Texture,
   position: THREE.Vector3,
   rotationY: number,
-  phase: number,
-): OwnerCharacterHandle {
+) {
   const character = new THREE.Group();
   character.position.copy(position);
   character.rotation.y = rotationY;
 
-  const armAngle = { value: 2.36 };
   const model = template.clone(true);
   model.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
@@ -211,21 +145,13 @@ function createOwnerCharacter(
       roughness: 0.78,
       metalness: 0.01,
     });
-    applyOwnerArmWave(material, armAngle, true);
     object.material = material;
     object.castShadow = true;
     object.receiveShadow = true;
-
-    const depthMaterial = new THREE.MeshDepthMaterial({
-      depthPacking: THREE.RGBADepthPacking,
-    });
-    applyOwnerArmWave(depthMaterial, armAngle, false);
-    object.customDepthMaterial = depthMaterial;
   });
 
   character.add(model);
   scene.add(character);
-  return { armAngle, phase };
 }
 
 function createClouds(scene: THREE.Scene) {
@@ -825,8 +751,6 @@ function createWorld(scene: THREE.Scene): WorldHandles {
   });
   createSkybridge(scene, concrete, darkMetal);
 
-  const ownerCharacters: OwnerCharacterHandle[] = [];
-
   const frames = new THREE.InstancedMesh(
     new THREE.BoxGeometry(1.42, 1.92, 0.13),
     frameMaterial,
@@ -852,7 +776,7 @@ function createWorld(scene: THREE.Scene): WorldHandles {
   highlight.matrixAutoUpdate = false;
   highlight.visible = false;
   scene.add(highlight);
-  return { frames, highlight, ownerCharacters };
+  return { frames, highlight };
 }
 
 function isInsideTower(x: number, z: number) {
@@ -1038,16 +962,13 @@ export function MonolithExperience() {
           return;
         }
 
-        world.ownerCharacters.push(
-          ...OWNER_CHARACTER_PLACEMENTS.map(({ x, z, rotationY, phase }) =>
-            createOwnerCharacter(
-              scene,
-              model,
-              texture,
-              new THREE.Vector3(x, BRIDGE_Y + 0.42, z),
-              rotationY,
-              phase,
-            ),
+        OWNER_CHARACTER_PLACEMENTS.forEach(({ x, z, rotationY }) =>
+          createOwnerCharacter(
+            scene,
+            model,
+            texture,
+            new THREE.Vector3(x, BRIDGE_Y + 0.42, z),
+            rotationY,
           ),
         );
         setIsReady(true);
@@ -1134,11 +1055,6 @@ export function MonolithExperience() {
       const delta = Math.min((time - previousTime) / 1000, 0.05);
       previousTime = time;
       const isLocked = document.pointerLockElement === renderer.domElement;
-
-      world.ownerCharacters.forEach(({ armAngle, phase }) => {
-        const wave = Math.sin(time * 0.00135 + phase);
-        armAngle.value = 2.36 + wave * 0.2;
-      });
 
       if (isLocked && selectedRef.current === null) {
         // Movement follows the camera's local axes: W/S use forward/backward,
@@ -1231,7 +1147,6 @@ export function MonolithExperience() {
           }
           material.dispose();
         });
-        object.customDepthMaterial?.dispose();
       });
       renderer.dispose();
       renderer.domElement.remove();
