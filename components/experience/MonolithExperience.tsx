@@ -20,6 +20,10 @@ const BRIDGE_Y = FLOOR_HEIGHTS[2];
 const EYE_HEIGHT = 1.7;
 const FRAME_COUNT = 1000;
 const STAIR_X_OFFSETS = [-8, 8, -8, 8] as const;
+const OWNER_CHARACTER_PLACEMENTS = [
+  { x: -11.15, z: 4.25, rotationY: Math.PI / 2, phase: 0 },
+  { x: 11.15, z: -4.25, rotationY: -Math.PI / 2, phase: Math.PI * 0.62 },
+] as const;
 
 type FrameRecord = {
   id: number;
@@ -36,6 +40,13 @@ type LocationState = {
 type WorldHandles = {
   frames: THREE.InstancedMesh;
   highlight: THREE.Mesh;
+  ownerCharacters: OwnerCharacterHandle[];
+};
+
+type OwnerCharacterHandle = {
+  wavingArm: THREE.Group;
+  restingArmRotation: number;
+  phase: number;
 };
 
 type GallerySlot = {
@@ -89,6 +100,262 @@ function addRailBetween(
   rail.receiveShadow = true;
   parent.add(rail);
   return rail;
+}
+
+function addCharacterMesh(
+  parent: THREE.Object3D,
+  geometry: THREE.BufferGeometry,
+  material: THREE.Material,
+  position: [number, number, number],
+  scale: [number, number, number] = [1, 1, 1],
+  rotation: [number, number, number] = [0, 0, 0],
+) {
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.set(...position);
+  mesh.scale.set(...scale);
+  mesh.rotation.set(...rotation);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+
+function createOwnerCharacter(
+  scene: THREE.Scene,
+  position: THREE.Vector3,
+  rotationY: number,
+  phase: number,
+): OwnerCharacterHandle {
+  const character = new THREE.Group();
+  character.position.copy(position);
+  character.rotation.y = rotationY;
+  character.scale.setScalar(0.92);
+
+  const hoodieMaterial = new THREE.MeshStandardMaterial({
+    color: 0x30255f,
+    roughness: 0.83,
+    metalness: 0.02,
+  });
+  const hoodieHighlightMaterial = new THREE.MeshStandardMaterial({
+    color: 0x4a3a86,
+    roughness: 0.8,
+    metalness: 0.02,
+  });
+  const skinMaterial = new THREE.MeshStandardMaterial({
+    color: 0xf3c8ad,
+    roughness: 0.8,
+    metalness: 0,
+  });
+  const hairMaterial = new THREE.MeshStandardMaterial({
+    color: 0x713b3e,
+    roughness: 0.72,
+    metalness: 0.01,
+  });
+  const pantsMaterial = new THREE.MeshStandardMaterial({
+    color: 0x24262c,
+    roughness: 0.91,
+    metalness: 0,
+  });
+  const shoePurpleMaterial = new THREE.MeshStandardMaterial({
+    color: 0x58428c,
+    roughness: 0.68,
+    metalness: 0.03,
+  });
+  const shoeWhiteMaterial = new THREE.MeshStandardMaterial({
+    color: 0xe8e3dc,
+    roughness: 0.74,
+    metalness: 0,
+  });
+  const facialMaterial = new THREE.MeshStandardMaterial({
+    color: 0x33201f,
+    roughness: 0.76,
+    metalness: 0,
+  });
+  const blushMaterial = new THREE.MeshStandardMaterial({
+    color: 0xe78f91,
+    roughness: 0.8,
+    metalness: 0,
+  });
+
+  // Shoes and legs keep the approved compact, full-body chibi silhouette.
+  for (const side of [-1, 1]) {
+    addCharacterMesh(
+      character,
+      new THREE.CapsuleGeometry(0.18, 0.34, 5, 10),
+      shoeWhiteMaterial,
+      [side * 0.27, 0.18, 0.12],
+      [1.05, 1, 1.15],
+      [Math.PI / 2, 0, 0],
+    );
+    addCharacterMesh(
+      character,
+      new THREE.BoxGeometry(0.38, 0.12, 0.42),
+      shoePurpleMaterial,
+      [side * 0.27, 0.15, 0.26],
+    );
+    addCharacterMesh(
+      character,
+      new THREE.CapsuleGeometry(0.24, 0.58, 6, 12),
+      pantsMaterial,
+      [side * 0.27, 0.72, 0],
+      [1.04, 1, 1.02],
+    );
+  }
+
+  addCharacterMesh(
+    character,
+    new THREE.SphereGeometry(0.72, 26, 18),
+    hoodieMaterial,
+    [0, 1.58, 0],
+    [1, 1.02, 0.72],
+  );
+  addCharacterMesh(
+    character,
+    new THREE.TorusGeometry(0.57, 0.065, 8, 30),
+    hoodieHighlightMaterial,
+    [0, 1.09, 0],
+    [1, 0.76, 1],
+    [Math.PI / 2, 0, 0],
+  );
+  addCharacterMesh(
+    character,
+    new THREE.BoxGeometry(0.58, 0.27, 0.06),
+    hoodieHighlightMaterial,
+    [0, 1.43, 0.54],
+  );
+  for (const side of [-1, 1]) {
+    addCharacterMesh(
+      character,
+      new THREE.CylinderGeometry(0.018, 0.018, 0.34, 8),
+      hoodieHighlightMaterial,
+      [side * 0.14, 1.76, 0.58],
+    );
+  }
+
+  // Hood, face, hair and closed-eye expression mirror the approved concept.
+  addCharacterMesh(
+    character,
+    new THREE.SphereGeometry(0.79, 30, 22),
+    hoodieMaterial,
+    [0, 2.56, 0],
+    [1, 1.03, 0.82],
+  );
+  addCharacterMesh(
+    character,
+    new THREE.SphereGeometry(0.61, 30, 22),
+    skinMaterial,
+    [0, 2.53, 0.48],
+    [1, 0.9, 0.78],
+  );
+  addCharacterMesh(
+    character,
+    new THREE.TorusGeometry(0.63, 0.12, 10, 40),
+    hoodieHighlightMaterial,
+    [0, 2.57, 0.72],
+    [1, 1.03, 1],
+  );
+  addCharacterMesh(
+    character,
+    new THREE.SphereGeometry(0.62, 28, 18),
+    hairMaterial,
+    [0, 2.87, 0.63],
+    [1, 0.5, 0.78],
+  );
+  [
+    { x: -0.3, y: 2.76, rz: -0.28, sx: 1.15 },
+    { x: 0, y: 2.8, rz: -0.08, sx: 1.2 },
+    { x: 0.3, y: 2.78, rz: 0.22, sx: 1.05 },
+  ].forEach(({ x, y, rz, sx }) => {
+    addCharacterMesh(
+      character,
+      new THREE.SphereGeometry(0.22, 18, 12),
+      hairMaterial,
+      [x, y, 1.02],
+      [sx, 0.42, 0.35],
+      [0, 0, rz],
+    );
+  });
+
+  for (const side of [-1, 1]) {
+    addCharacterMesh(
+      character,
+      new THREE.BoxGeometry(0.22, 0.026, 0.025),
+      facialMaterial,
+      [side * 0.23, 2.5, 0.97],
+      [1, 1, 1],
+      [0, 0, side * 0.06],
+    );
+    addCharacterMesh(
+      character,
+      new THREE.SphereGeometry(0.035, 10, 8),
+      blushMaterial,
+      [side * 0.32, 2.38, 0.96],
+      [1.8, 0.55, 0.35],
+    );
+  }
+  addCharacterMesh(
+    character,
+    new THREE.SphereGeometry(0.026, 10, 8),
+    facialMaterial,
+    [0, 2.31, 0.97],
+    [1.3, 0.55, 0.45],
+  );
+
+  const restingArm = new THREE.Group();
+  restingArm.position.set(-0.61, 1.88, 0.04);
+  restingArm.rotation.z = 0.08;
+  addCharacterMesh(
+    restingArm,
+    new THREE.CapsuleGeometry(0.19, 0.48, 6, 12),
+    hoodieMaterial,
+    [0, -0.38, 0],
+  );
+  addCharacterMesh(
+    restingArm,
+    new THREE.SphereGeometry(0.16, 16, 12),
+    skinMaterial,
+    [0, -0.79, 0.01],
+  );
+  character.add(restingArm);
+
+  const wavingArm = new THREE.Group();
+  const restingArmRotation = -0.37;
+  wavingArm.position.set(0.61, 1.9, 0.04);
+  wavingArm.rotation.z = restingArmRotation;
+  addCharacterMesh(
+    wavingArm,
+    new THREE.CapsuleGeometry(0.2, 0.42, 6, 12),
+    hoodieMaterial,
+    [0, 0.32, 0],
+  );
+  addCharacterMesh(
+    wavingArm,
+    new THREE.SphereGeometry(0.17, 16, 12),
+    skinMaterial,
+    [0, 0.72, 0.01],
+  );
+  for (const finger of [-1, 1]) {
+    addCharacterMesh(
+      wavingArm,
+      new THREE.CapsuleGeometry(0.052, 0.2, 5, 10),
+      skinMaterial,
+      [finger * 0.075, 0.98, 0.01],
+      [1, 1, 1],
+      [0, 0, finger * 0.14],
+    );
+  }
+  addCharacterMesh(
+    wavingArm,
+    new THREE.CapsuleGeometry(0.045, 0.11, 5, 9),
+    skinMaterial,
+    [-0.13, 0.76, 0.04],
+    [1, 1, 1],
+    [0, 0, Math.PI / 2.7],
+  );
+  character.add(wavingArm);
+
+  scene.add(character);
+  return { wavingArm, restingArmRotation, phase };
 }
 
 function createClouds(scene: THREE.Scene) {
@@ -688,6 +955,15 @@ function createWorld(scene: THREE.Scene): WorldHandles {
   });
   createSkybridge(scene, concrete, darkMetal);
 
+  const ownerCharacters = OWNER_CHARACTER_PLACEMENTS.map(
+    ({ x, z, rotationY, phase }) => createOwnerCharacter(
+      scene,
+      new THREE.Vector3(x, BRIDGE_Y + 0.42, z),
+      rotationY,
+      phase,
+    ),
+  );
+
   const frames = new THREE.InstancedMesh(
     new THREE.BoxGeometry(1.42, 1.92, 0.13),
     frameMaterial,
@@ -713,7 +989,7 @@ function createWorld(scene: THREE.Scene): WorldHandles {
   highlight.matrixAutoUpdate = false;
   highlight.visible = false;
   scene.add(highlight);
-  return { frames, highlight };
+  return { frames, highlight, ownerCharacters };
 }
 
 function isInsideTower(x: number, z: number) {
@@ -733,9 +1009,20 @@ function isOnBridge(x: number, z: number) {
   return Math.abs(x) <= 15 && Math.abs(z) <= 6.2;
 }
 
+function isInsideOwnerCharacter(x: number, z: number, footY: number) {
+  if (Math.abs(footY - BRIDGE_Y) > 1.35) return false;
+  return OWNER_CHARACTER_PLACEMENTS.some(({ x: ownerX, z: ownerZ }) => {
+    const deltaX = x - ownerX;
+    const deltaZ = z - ownerZ;
+    return deltaX * deltaX + deltaZ * deltaZ < 0.82 * 0.82;
+  });
+}
+
 function isNavigable(x: number, z: number, footY: number) {
   const bridgeIsReachable = Math.abs(footY - BRIDGE_Y) <= 1.35;
-  return isInsideTower(x, z) || (bridgeIsReachable && isOnBridge(x, z));
+  const isWithinGallery =
+    isInsideTower(x, z) || (bridgeIsReachable && isOnBridge(x, z));
+  return isWithinGallery && !isInsideOwnerCharacter(x, z, footY);
 }
 
 function closestFloorHeight(footY: number): number {
@@ -956,6 +1243,14 @@ export function MonolithExperience() {
       const delta = Math.min((time - previousTime) / 1000, 0.05);
       previousTime = time;
       const isLocked = document.pointerLockElement === renderer.domElement;
+
+      world.ownerCharacters.forEach(
+        ({ wavingArm, restingArmRotation, phase }) => {
+          const wave = Math.sin(time * 0.00135 + phase);
+          wavingArm.rotation.z = restingArmRotation + wave * 0.22;
+          wavingArm.rotation.x = Math.sin(time * 0.0009 + phase) * 0.035;
+        },
+      );
 
       if (isLocked && selectedRef.current === null) {
         // Movement follows the camera's local axes: W/S use forward/backward,
